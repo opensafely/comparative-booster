@@ -227,19 +227,18 @@ data_surv <-
 data_surv_rounded <-
   data_surv %>%
   mutate(
-    # Use ceiling not round. This is slightly biased upwards,
-    # but means there's no disclosure risk at the boundaries (0 and 1) where masking would otherwise be threshold/2
+    # Round cumulative counts up to `threshold`, then deduct half of threshold to remove bias
 
     N = max(n.risk, na.rm=TRUE),
-    cml.compevents = ceiling_any(cumsum(n.allevents-n.event), threshold),
-    cml.event = ceiling_any(cumsum(n.event), threshold),
-    cml.censor = ceiling_any(cumsum(n.censor), threshold),
+    cml.compevents = roundmid_any(cumsum(n.allevents-n.event), threshold),
+    cml.event = roundmid_any(cumsum(n.event), threshold),
+    cml.censor = roundmid_any(cumsum(n.censor), threshold),
     cml.allevents = cml.compevents + cml.event,
 
     n.allevents = diff(c(0, cml.allevents)),
     n.event = diff(c(0, cml.event)),
     n.censor = diff(c(0, cml.censor)),
-    n.risk = ceiling_any(N, threshold) - lag(cml.allevents + cml.censor, 1, 0),
+    n.risk = roundmid_any(N, threshold) - lag(cml.allevents + cml.censor, 1, 0),
 
 
     ## calculate surv based on rounded event counts

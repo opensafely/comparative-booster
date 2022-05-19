@@ -202,25 +202,14 @@ data_surv <-
 data_surv_rounded <-
   data_surv %>%
   mutate(
-    # Use ceiling not round. This is slightly biased upwards,
-    # but means there's no disclosure risk at the boundaries (0 and 1) where masking would otherwise be threshold/2
-    #
-    # Explanation:
-    # ensure every "step" in the KM survival curve is based on no fewer than `threshold` outcome+censoring events
-    # N = max(n.risk, na.rm=TRUE) is the number at risk at time zero.
-    # N/threshold is the inverse of the minimum `step` size on the survival scale (0-1)
-    # floor(N/threshold) rounds down to nearest integer.
-    # 1/floor(N) is the minimum step size on the survival scale (0-1), ensuring increments no fewer than `threshold` on the events scale
-    # ceiling_any(x, min_increment) rounds up values of x on the survival scale, so that they lie on the grid of width `min_increment`.
-
-
+    # Round cumulative counts up to `threshold`, then deduct half of threshold to remove bias
 
     N = max(n.risk, na.rm=TRUE),
-    cml.event = ceiling_any(cumsum(replace_na(n.event, 0)), threshold),
-    cml.censor = ceiling_any(cumsum(replace_na(n.censor, 0)), threshold),
+    cml.event = roundmid_any(cumsum(replace_na(n.event, 0)), threshold),
+    cml.censor = roundmid_any(cumsum(replace_na(n.censor, 0)), threshold),
     n.event = diff(c(0,cml.event)),
     n.censor = diff(c(0,cml.censor)),
-    n.risk = ceiling_any(N, threshold) - lag(cml.event + cml.censor,1,0),
+    n.risk = roundmid_any(N, threshold) - lag(cml.event + cml.censor,1,0),
     summand = n.event / ((n.risk - n.event) * n.risk),
 
     ## calculate surv based on rounded event counts
@@ -232,6 +221,14 @@ data_surv_rounded <-
     surv.ul = exp(-exp(llsurv + qnorm(0.975)*llsurv.se)),
 
     # Or round surv based on a grid of values representing increments of `threshold`
+    # Explanation:
+    # ensure every "step" in the KM survival curve is based on no fewer than `threshold` outcome+censoring events
+    # N = max(n.risk, na.rm=TRUE) is the number at risk at time zero.
+    # N/threshold is the inverse of the minimum `step` size on the survival scale (0-1)
+    # floor(N/threshold) rounds down to nearest integer.
+    # 1/floor(N) is the minimum step size on the survival scale (0-1), ensuring increments no fewer than `threshold` on the events scale
+    # ceiling_any(x, min_increment) rounds up values of x on the survival scale, so that they lie on the grid of width `min_increment`.
+
     #surv = ceiling_any(surv, 1/floor(N/threshold)),
     #surv.ll = ceiling_any(surv.ll, 1/floor(N/threshold)),
     #surv.ul = ceiling_any(surv.ul, 1/floor(N/threshold)),
