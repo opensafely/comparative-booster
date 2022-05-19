@@ -134,11 +134,6 @@ data_matched <-
 
   )
 
-
-## TODO -- consider bootstrapping  ----
-# consider bootstrapping data_matched dataset (by matched pairs) to simplify derivation of relative risk confidence limits
-
-
 # outcome frequency
 outcomes_per_treated <- table(outcome=data_matched$ind_outcome, treated=data_matched$treatment)
 
