@@ -253,8 +253,22 @@ data_surv_rounded <-
 write_csv(data_surv_rounded, fs::path(output_dir, "km_estimates.csv"))
 
 plot_km <- data_surv %>%
+  group_modify(
+    ~add_row(
+      .x,
+      time=0,
+      lagtime=0,
+      leadtime=1,
+      interval=1,
+      surv=1,
+      surv.ll=1,
+      surv.ul=1,
+      .before=0
+    ) %>%
+      fill(treatment_descr, .direction="up")
+  ) %>%
   ggplot(aes(group=treatment_descr, colour=treatment_descr, fill=treatment_descr)) +
-  geom_step(aes(x=time, y=1-surv))+
+  geom_step(aes(x=time, y=1-surv), direction="vh")+
   geom_rect(aes(xmin=lagtime, xmax=time, ymin=1-surv.ll, ymax=1-surv.ul), alpha=0.1, colour="transparent")+
   facet_grid(rows=vars(!!subgroup_sym))+
   scale_color_brewer(type="qual", palette="Set1", na.value="grey") +
@@ -282,8 +296,22 @@ ggsave(filename=fs::path(output_dir, "km_plot.png"), plot_km, width=20, height=1
 
 
 plot_km_rounded <- data_surv_rounded %>%
+  group_modify(
+    ~add_row(
+      .x,
+      time=0,
+      lagtime=0,
+      leadtime=1,
+      interval=1,
+      surv=1,
+      surv.ll=1,
+      surv.ul=1,
+      .before=0
+    ) %>%
+      fill(treatment_descr, .direction="up")
+  ) %>%
   ggplot(aes(group=treatment_descr, colour=treatment_descr, fill=treatment_descr)) +
-  geom_step(aes(x=time, y=1-surv))+
+  geom_step(aes(x=time, y=1-surv), direction="vh")+
   geom_rect(aes(xmin=lagtime, xmax=time, ymin=1-surv.ll, ymax=1-surv.ul), alpha=0.1, colour="transparent")+
   facet_grid(rows=vars(!!subgroup_sym))+
   scale_color_brewer(type="qual", palette="Set1", na.value="grey") +
