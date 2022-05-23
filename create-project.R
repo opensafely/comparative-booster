@@ -541,8 +541,8 @@ actions_list <- splice(
       "data_selection",
       "match_report_A",
       "match_report_B",
-      "km_combine_A",
-      "km_combine_B",
+      #"km_combine_A",
+      #"km_combine_B",
       "ci_combine_A",
       "ci_combine_B"
     ),
