@@ -530,14 +530,14 @@ cicontrast <- function(data, cuts=NULL){
       # survival ratio, standard error, and confidence limits, treating cause-specific death as a censoring event
       kmsr = kmsurv_1 / kmsurv_0,
       #kmsr.ln = log(kmsr),
-      kmsr.ln.se = (kmsurv.se_0/surv_0) + (kmsurv.se_1/surv_1), #because cmlhaz = -log(surv) and cmlhaz.se = surv.se/surv
-      kmsr.ll = exp(log(kmr) + qnorm(0.025)*kmsr.ln.se),
+      kmsr.ln.se = (kmsurv.se_0/kmsurv_0) + (kmsurv.se_1/kmsurv_1), #because cmlhaz = -log(surv) and cmlhaz.se = surv.se/surv
+      kmsr.ll = exp(log(kmsr) + qnorm(0.025)*kmsr.ln.se),
       kmsr.ul = exp(log(kmsr) + qnorm(0.975)*kmsr.ln.se),
 
       # risk ratio, standard error, and confidence limits, using delta method, treating cause-specific death as a censoring event
       kmrr = kmrisk_1 / kmrisk_0,
       #kmrr.ln = log(kmrr),
-      kmrr.ln.se = sqrt((kmrisk.se_1/risk_1)^2 + (kmrisk.se_0/kmrisk_0)^2),
+      kmrr.ln.se = sqrt((kmrisk.se_1/kmrisk_1)^2 + (kmrisk.se_0/kmrisk_0)^2),
       kmrr.ll = exp(log(kmrr) + qnorm(0.025)*kmrr.ln.se),
       kmrr.ul = exp(log(kmrr) + qnorm(0.975)*kmrr.ln.se),
 
