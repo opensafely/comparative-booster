@@ -135,11 +135,15 @@ data_matched <-
   ) %>%
   rowwise() %>%
   mutate(
-    status = which.min(c(noncompetingcensor_date, outcome_date, coviddeath_date, noncoviddeath_date))
+    status = which.min(c(outcome_date, coviddeath_date, noncoviddeath_date, noncompetingcensor_date))
   ) %>%
   ungroup() %>%
   mutate(
-    status = factor(as.character(status), levels=c("1","2","3","4"), labels = c("censored", outcome, "coviddeath", "noncoviddeath"))
+    status = factor(
+      as.character(status),
+      levels=c("4","1","2","3"),
+      labels = c("censored", outcome, "coviddeath", "noncoviddeath") # censor event must be first as that's how it's treated in survfit
+    )
   )
 
 
@@ -197,6 +201,11 @@ data_surv <-
         transmute(
           time, lagtime=lag(time,1,0), leadtime=lead(time), interval=time-lagtime,
           n.risk, n.allevents, n.event, n.censor,
+
+          kmsummand = n.event / ((n.risk - n.event) * n.risk),
+          kmsurv = cumprod(1 - n.event / n.risk),
+          kmsurv.se = kmsurv * sqrt(cumsum(kmsummand)),
+
           risk = estimate,
           risk.se = std.error,
           risk.ll = conf.low,
@@ -242,13 +251,21 @@ data_surv_rounded <-
 
 
     ## calculate surv based on rounded event counts
-    kmsummand = n.allevents / ((n.risk - n.allevents) * n.risk),
-    kmsurv = cumprod(1 - n.allevents / n.risk),
-    kmsurv.se = kmsurv * sqrt(cumsum(kmsummand)),
 
-    summand = (n.event / n.risk) * lag(kmsurv, 1, 1),
+    # KM estimate for event of interest, combining censored and competing events as censored
+    kmsummand = n.event / ((n.risk - n.event) * n.risk),
+    kmsurv = cumprod(1 - n.event / n.risk),
+    kmsurv.se = kmsurv * sqrt(cumsum(kmsummand)), #greenwood's formula
+    kmsurv.ln.se = kmsurv.se/kmsurv,
+    kmsurv.ll = exp(log(risk) + qnorm(0.025)*kmsurv.ln.se),
+    kmsurv.ul = exp(log(risk) + qnorm(0.975)*kmsurv.ln.se),
+
+    # CI estimate, treating comepting events as competing events
+    allsummand = n.allevents / ((n.risk - n.allevents) * n.risk),
+    allsurv = cumprod(1 - n.allevents / n.risk),
+    summand = (n.event / n.risk) * lag(allsurv, 1, 1),
     risk = cumsum(summand),
-    risk.se = cif.se(time, risk, n.risk, n.event, kmsurv, kmsummand),
+    risk.se = cif.se(time, risk, n.risk, n.event, allsurv, allsummand),
     risk.ln.se = risk.se/risk,
     risk.ll = exp(log(risk) + qnorm(0.025)*risk.ln.se),
     risk.ul = exp(log(risk) + qnorm(0.975)*risk.ln.se),
@@ -261,10 +278,10 @@ data_surv_rounded <-
   select(
     !!subgroup_sym, treatment, treatment_descr, time, lagtime, leadtime, interval,
     n.risk, n.allevents, n.event, n.censor,
+    kmsurv, kmsurv.se, kmsurv.ll, kmsurv.ul,
     risk, risk.se, risk.ll, risk.ul,
     surv, surv.se, surv.ll, surv.ul,
   )
-
 
 write_csv(data_surv_rounded, fs::path(output_dir, "ci_estimates.csv"))
 
@@ -276,6 +293,7 @@ plot_ci <- data_surv %>%
       lagtime=0,
       leadtime=1,
       interval=1,
+      kmsurv=1,
       surv=1,
       surv.ll=1,
       surv.ul=1,
@@ -285,6 +303,7 @@ plot_ci <- data_surv %>%
   ) %>%
   ggplot(aes(group=treatment_descr, colour=treatment_descr, fill=treatment_descr)) +
   geom_step(aes(x=time, y=1-surv), direction="vh")+
+  geom_step(aes(x=time, y=1-kmsurv), direction="vh", linetype="dashed", alpha=0.5)+
   geom_rect(aes(xmin=lagtime, xmax=time, ymin=1-surv.ll, ymax=1-surv.ul), alpha=0.1, colour="transparent")+
   facet_grid(rows=vars(!!subgroup_sym))+
   scale_color_brewer(type="qual", palette="Set1", na.value="grey") +
@@ -319,6 +338,7 @@ plot_ci_rounded <- data_surv_rounded %>%
       lagtime=0,
       leadtime=1,
       interval=1,
+      kmsurv=1,
       surv=1,
       surv.ll=1,
       surv.ul=1,
@@ -328,6 +348,7 @@ plot_ci_rounded <- data_surv_rounded %>%
   ) %>%
   ggplot(aes(group=treatment_descr, colour=treatment_descr, fill=treatment_descr)) +
   geom_step(aes(x=time, y=1-surv), direction="vh")+
+  geom_step(aes(x=time, y=1-kmsurv), direction="vh", linetype="dashed", alpha=0.5)+
   geom_rect(aes(xmin=lagtime, xmax=time, ymin=1-surv.ll, ymax=1-surv.ul), alpha=0.1, colour="transparent")+
   facet_grid(rows=vars(!!subgroup_sym))+
   scale_color_brewer(type="qual", palette="Set1", na.value="grey") +
@@ -381,13 +402,10 @@ cicontrast <- function(data, cuts=NULL){
       rate = n.event / n.atrisk,
       cml.rate = cml.event / cml.persontime,
 
+      kmsurv, kmsurv.se, kmsurv.ll, kmsurv.ul,
+      kmrisk = 1-kmsurv, kmrisk.se = kmsurv.se, kmrisk.ll = 1-kmsurv.ul, kmrisk.ul = 1-kmsurv.ll,
       surv, surv.se, surv.ll, surv.ul,
-
-      risk = 1 - surv,
-      risk.se = surv.se,
-      risk.ll = 1 - surv.ul,
-      risk.ul = 1 - surv.ll,
-
+      risk, risk.se, risk.ll, risk.ul,
 
     ) %>%
     group_by(!!subgroup_sym, treatment, period_start, period_end, period) %>%
@@ -407,6 +425,17 @@ cicontrast <- function(data, cuts=NULL){
 
       ## quantities calculated from time zero until end of time period
       # these should be the same as the daily values as at the end of the time period
+
+
+      kmsurv = last(surv),
+      kmsurv.se = last(kmsurv.se),
+      kmsurv.ll = last(kmsurv.ll),
+      kmsurv.ul = last(kmsurv.ul),
+
+      kmrisk = last(risk),
+      kmrisk.se = last(kmrisk.se),
+      kmrisk.ll = last(kmrisk.ll),
+      kmrisk.ul = last(kmrisk.ul),
 
       surv = last(surv),
       surv.se = last(surv.se),
@@ -440,6 +469,8 @@ cicontrast <- function(data, cuts=NULL){
         persontime, n.atrisk, n.event, n.censor,
         rate,
 
+        kmsurv, kmsurv.se, kmsurv.ll, kmsurv.ul,
+        kmrisk, kmrisk.se, kmrisk.ll, kmrisk.ul,
         surv, surv.se, surv.ll, surv.ul,
         risk, risk.se, risk.ll, risk.ul,
 
@@ -466,32 +497,57 @@ cicontrast <- function(data, cuts=NULL){
       ## quantities calculated from time zero until end of time period
       # these should be the same as values calculated on each day of follow up
 
-      # survival ratio, standard error, and confidence limits
-      cisr = surv_1 / surv_0,
-      #cisr.ln = log(cisr),
-      cisr.ln.se = (surv.se_0/surv_0) + (surv.se_1/surv_1), #because cmlhaz = -log(surv) and cmlhaz.se = surv.se/surv
-      cisr.ll = exp(log(cisr) + qnorm(0.025)*cisr.ln.se),
-      cisr.ul = exp(log(cisr) + qnorm(0.975)*cisr.ln.se),
-
-      # risk ratio, standard error, and confidence limits, using delta method
-      cirr = risk_1 / risk_0,
-      #cirr.ln = log(cirr),
-      cirr.ln.se = sqrt((risk.se_1/risk_1)^2 + (risk.se_0/risk_0)^2),
-      cirr.ll = exp(log(cirr) + qnorm(0.025)*cirr.ln.se),
-      cirr.ul = exp(log(cirr) + qnorm(0.975)*cirr.ln.se),
-
-      # risk difference, standard error and confidence limits
-      cird = risk_1 - risk_0,
-      cird.se = sqrt( (risk.se_0^2) + (risk.se_1^2) ),
-      cird.ll = cird + qnorm(0.025)*cird.se,
-      cird.ul = cird + qnorm(0.975)*cird.se,
-
 
       # cumulative incidence rate ratio
       cmlirr = cml.rate_1 / cml.rate_0,
       cmlirr.ln.se = sqrt((1/cml.event_0) + (1/cml.event_1)),
       cmlirr.ll = exp(log(cmlirr) + qnorm(0.025)*cmlirr.ln.se),
       cmlirr.ul = exp(log(cmlirr) + qnorm(0.975)*cmlirr.ln.se),
+
+      # survival ratio, standard error, and confidence limits, treating cause-specific death as a competing event
+      cisr = surv_1 / surv_0,
+      #cisr.ln = log(cisr),
+      cisr.ln.se = (surv.se_0/surv_0) + (surv.se_1/surv_1), #because cmlhaz = -log(surv) and cmlhaz.se = surv.se/surv
+      cisr.ll = exp(log(cisr) + qnorm(0.025)*cisr.ln.se),
+      cisr.ul = exp(log(cisr) + qnorm(0.975)*cisr.ln.se),
+
+      # risk ratio, standard error, and confidence limits, using delta method, , treating cause-specific death as a competing event
+      cirr = risk_1 / risk_0,
+      #cirr.ln = log(cirr),
+      cirr.ln.se = sqrt((risk.se_1/risk_1)^2 + (risk.se_0/risk_0)^2),
+      cirr.ll = exp(log(cirr) + qnorm(0.025)*cirr.ln.se),
+      cirr.ul = exp(log(cirr) + qnorm(0.975)*cirr.ln.se),
+
+      # risk difference, standard error and confidence limits, , treating cause-specific death as a competing event
+      cird = risk_1 - risk_0,
+      cird.se = sqrt( (risk.se_0^2) + (risk.se_1^2) ),
+      cird.ll = cird + qnorm(0.025)*cird.se,
+      cird.ul = cird + qnorm(0.975)*cird.se,
+
+
+
+
+      # survival ratio, standard error, and confidence limits, treating cause-specific death as a censoring event
+      kmsr = kmsurv_1 / kmsurv_0,
+      #kmsr.ln = log(kmsr),
+      kmsr.ln.se = (kmsurv.se_0/surv_0) + (kmsurv.se_1/surv_1), #because cmlhaz = -log(surv) and cmlhaz.se = surv.se/surv
+      kmsr.ll = exp(log(kmr) + qnorm(0.025)*kmsr.ln.se),
+      kmsr.ul = exp(log(kmsr) + qnorm(0.975)*kmsr.ln.se),
+
+      # risk ratio, standard error, and confidence limits, using delta method, treating cause-specific death as a censoring event
+      kmrr = kmrisk_1 / kmrisk_0,
+      #kmrr.ln = log(kmrr),
+      kmrr.ln.se = sqrt((kmrisk.se_1/risk_1)^2 + (kmrisk.se_0/kmrisk_0)^2),
+      kmrr.ll = exp(log(kmrr) + qnorm(0.025)*kmrr.ln.se),
+      kmrr.ul = exp(log(kmrr) + qnorm(0.975)*kmrr.ln.se),
+
+      # risk difference, standard error and confidence limits, treating cause-specific death as a censoring event
+      kmrd = kmrisk_1 - kmrisk_0,
+      kmrd.se = sqrt( (kmrisk.se_0^2) + (kmrisk.se_1^2) ),
+      kmrd.ll = kmrd + qnorm(0.025)*kmrd.se,
+      kmrd.ul = kmrd + qnorm(0.975)*kmrd.se,
+
+
 
       # cumulative incidence rate difference
       #cmlird = cml.rate_1 - cml.rate_0
