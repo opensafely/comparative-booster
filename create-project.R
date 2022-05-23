@@ -98,6 +98,8 @@ action_contrasts <- function(
 ){
 
   splice(
+
+    ## kaplan-meier action
     # action(
     #   name = glue("km_{matchset}_{subgroup}_{outcome}"),
     #   run = glue("r:latest analysis/km.R"),
@@ -113,24 +115,7 @@ action_contrasts <- function(
     #   )
     # ),
 
-
-    ## kaplan-meier action
-    action(
-      name = glue("km_{matchset}_{subgroup}_{outcome}"),
-      run = glue("r:latest analysis/km.R"),
-      arguments = c(matchset, subgroup, outcome),
-      needs = list(
-        glue("match_{matchset}"),
-        "data_selection"
-      ),
-      moderately_sensitive = lst(
-        txt = glue("output/match/{matchset}/km/{subgroup}/{outcome}/*.txt"),
-        csv = glue("output/match/{matchset}/km/{subgroup}/{outcome}/*.csv"),
-        png = glue("output/match/{matchset}/km/{subgroup}/{outcome}/*.png"),
-      )
-    ),
-
-    ## competing risks action
+    ## competing risks action, including kaplan-meier estimates
     action(
       name = glue("ci_{matchset}_{subgroup}_{outcome}"),
       run = glue("r:latest analysis/ci.R"),
@@ -158,26 +143,26 @@ action_contrasts_combine <- function(
 ){
 
   splice(
-    action(
-      name = glue("km_combine_{matchset}"),
-      run = glue("r:latest analysis/km_combine.R"),
-      arguments = c(matchset),
-      needs = splice(
-        as.list(
-          glue_data(
-            .x=expand_grid(
-              subgroup=subgroups,
-              outcome=outcomes
-            ),
-            "km_{matchset}_{subgroup}_{outcome}"
-          )
-        )
-      ),
-      moderately_sensitive = lst(
-        csv = glue("output/match/{matchset}/km/combined/*.csv"),
-        png = glue("output/match/{matchset}/km/combined/plots/*.png"),
-      )
-    ),
+    # action(
+    #   name = glue("km_combine_{matchset}"),
+    #   run = glue("r:latest analysis/km_combine.R"),
+    #   arguments = c(matchset),
+    #   needs = splice(
+    #     as.list(
+    #       glue_data(
+    #         .x=expand_grid(
+    #           subgroup=subgroups,
+    #           outcome=outcomes
+    #         ),
+    #         "km_{matchset}_{subgroup}_{outcome}"
+    #       )
+    #     )
+    #   ),
+    #   moderately_sensitive = lst(
+    #     csv = glue("output/match/{matchset}/km/combined/*.csv"),
+    #     png = glue("output/match/{matchset}/km/combined/plots/*.png"),
+    #   )
+    # ),
 
     action(
       name = glue("ci_combine_{matchset}"),
