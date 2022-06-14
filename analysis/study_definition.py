@@ -901,7 +901,7 @@ study = StudyDefinition(
     ),
     moved_into_care_home=patients.with_these_clinical_events(
       codelists.carehome,
-      on_or_after="housebound_date",
+      between=["housebound_date", "covid_vax_disease_3_date - 1 day"],
     ),
   ),
   
